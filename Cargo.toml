@@ -9,7 +9,7 @@ description = "SQPnp camera pose estimation"
 homepage = "https://github.com/powei-lin/sqpnp_simple"
 repository = "https://github.com/powei-lin/sqpnp_simple"
 keywords = ["solvepnp", "vision", "pose"]
-categories = ["data-structures", "science", "mathematics", "robotics"]
+categories = ["data-structures", "science", "mathematics", "science::robotics"]
 exclude = ["/.github/*", "*.ipynb", "./scripts/*", "examples/*", "tests/*"]
 
 [dependencies]
