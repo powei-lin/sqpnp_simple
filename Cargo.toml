@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+glam = "0.29.2"
+log = "0.4.22"
 nalgebra = "0.33.2"
-num-dual = "0.10.3"
-tiny-solver = "0.8.0"
 
 [[example]]
 name = "random_points"
 
 [dev-dependencies]
+env_logger = "0.11.5"
 rand = "0.8.5"
