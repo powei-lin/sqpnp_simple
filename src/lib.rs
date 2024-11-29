@@ -34,7 +34,8 @@ fn residual_and_approx_jaccobian(
             }
             let r_plus = rvec_to_r9(&rvec_plus);
             let residual_plus = r_plus.transpose() * om * r_plus;
-            jac[(row, i)] = (residual_plus[0] - residual[0]) / STEP;
+            let j = (residual_plus[0] - residual[0]) / STEP;
+            jac[(row, i)] = j;
         }
     }
 
@@ -58,6 +59,7 @@ pub fn sqpnp_solve(
 ) -> Option<((f64, f64, f64), (f64, f64, f64))> {
     const MAX_ITER: usize = 20;
     const MAX_OMAGA_SQUASH: usize = 6;
+    const MAX_RVEC_STEP: f64 = 0.5;
     if p3ds.len() < 3 {
         return None;
     }
@@ -113,7 +115,12 @@ pub fn sqpnp_solve(
         let b = -1.0 * jac.transpose() * residuals;
         let a = jac.transpose() * jac;
 
-        let dx = a.qr().solve(&b).unwrap();
+        let mut dx = a.qr().solve(&b).unwrap();
+        dx.iter_mut().for_each(|i| {
+            if i.abs() > MAX_RVEC_STEP {
+                *i /= i.abs() / MAX_RVEC_STEP;
+            }
+        });
         if dx.norm_squared() < 1e-10 {
             rvec += dx;
             break;
@@ -121,7 +128,7 @@ pub fn sqpnp_solve(
         rvec += dx;
         if rvec.norm() > f64::consts::PI {
             trace!("rvec norm larger than pi, reset.");
-            rvec = na::Vector3::new_random() / 1e5;
+            rvec = na::Vector3::new_random() / 1e3;
         }
     }
     let tvec = pmat * rvec_to_r9(&rvec);
