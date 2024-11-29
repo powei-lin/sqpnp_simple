@@ -7,7 +7,6 @@ use sqpnp_simple::sqpnp_solve;
 fn main() {
     env_logger::init();
     let p3ds_pt: Vec<_> = (0..144)
-        .into_iter()
         .map(|_| na::Point3::<f64>::new(random(), random(), random::<f64>() + 0.5))
         .collect();
 

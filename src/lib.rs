@@ -96,9 +96,7 @@ pub fn sqpnp_solve(
     }
 
     let q_sum_inv_option = q_sum.try_inverse();
-    if q_sum_inv_option.is_none() {
-        return None;
-    }
+    q_sum_inv_option?;
 
     let pmat = -1.0 * q_sum_inv_option.unwrap() * qa_sum;
     let num_omega = MAX_OMAGA_SQUASH.min(amat_vec.len());
