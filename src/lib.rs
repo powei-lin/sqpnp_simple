@@ -1,5 +1,7 @@
+use core::f64;
 use std::iter::zip;
 
+use log::trace;
 use nalgebra as na;
 
 fn rvec_to_r9<T>(rvec: &na::Vector3<T>) -> na::SVector<T, 9>
@@ -21,7 +23,7 @@ fn residual_and_approx_jaccobian(
     let mut jac = na::DMatrix::<f64>::zeros(omegas.len(), 3);
     let mut residuals = na::DVector::<f64>::zeros(omegas.len());
     const STEP: f64 = 1e-8;
-    let r = rvec_to_r9(&rvec);
+    let r = rvec_to_r9(rvec);
     for (row, om) in omegas.iter().enumerate() {
         let residual = r.transpose() * om * r;
         residuals[row] = residual[0];
@@ -119,6 +121,10 @@ pub fn sqpnp_solve(
             break;
         }
         rvec += dx;
+        if rvec.norm() > f64::consts::PI {
+            trace!("rvec norm larger than pi, reset.");
+            rvec = na::Vector3::new_random() / 1e5;
+        }
     }
     let tvec = pmat * rvec_to_r9(&rvec);
     Some(((rvec[0], rvec[1], rvec[2]), (tvec[0], tvec[1], tvec[2])))
