@@ -110,7 +110,8 @@ pub fn sqpnp_solve(
     }
 
     let mut rvec = na::Vector3::<f64>::new(0.0, 0.0, 1e-4);
-    for _ in 0..MAX_ITER {
+    let mut prev_dx_norm_squared = f64::MAX;
+    for i in 0..MAX_ITER {
         let (residuals, jac) = residual_and_approx_jaccobian(&rvec, &omegas);
         let b = -1.0 * jac.transpose() * residuals;
         let a = jac.transpose() * jac;
@@ -121,16 +122,38 @@ pub fn sqpnp_solve(
                 *i /= i.abs() / MAX_RVEC_STEP;
             }
         });
-        if dx.norm_squared() < 1e-10 {
-            rvec += dx;
-            break;
-        }
+        let ns = dx.norm_squared();
+        trace!("{} dx {}", i, ns);
         rvec += dx;
-        if rvec.norm() > f64::consts::PI {
+        if ns < 1e-10 {
+            break;
+        } else if ns > prev_dx_norm_squared {
+            trace!("dx not decreasing reset.");
+            rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
+            prev_dx_norm_squared = f64::MAX;
+        } else if rvec.norm() > f64::consts::PI {
             trace!("rvec norm larger than pi, reset.");
-            rvec = na::Vector3::new_random() / 1e3;
+            rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
+        } else {
+            prev_dx_norm_squared = ns;
         }
     }
+    if prev_dx_norm_squared > 0.0001 {
+        return None;
+    }
     let tvec = pmat * rvec_to_r9(&rvec);
-    Some(((rvec[0], rvec[1], rvec[2]), (tvec[0], tvec[1], tvec[2])))
+    let transform = na::Isometry3::new(tvec, rvec);
+    let p3d0 = na::Point3::new(p3ds[0].0, p3ds[0].1, p3ds[0].2);
+    let p3dz = (transform * p3d0).z;
+    if p3dz > 0.0 {
+        Some(((rvec[0], rvec[1], rvec[2]), (tvec[0], tvec[1], tvec[2])))
+    } else {
+        let mut rmat = na::Rotation3::from_scaled_axis(rvec).matrix().clone();
+        trace!("rmat before {}", rmat);
+        rmat.columns_mut(0, 2).scale_mut(-1.0);
+        let rvec = na::Rotation3::from_matrix_unchecked(rmat).scaled_axis();
+        let tvec = pmat * rvec_to_r9(&rvec);
+
+        Some(((rvec[0], rvec[1], rvec[2]), (tvec[0], tvec[1], tvec[2])))
+    }
 }
