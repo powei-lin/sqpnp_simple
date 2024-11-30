@@ -29,12 +29,16 @@ fn residual_and_approx_jaccobian(
         residuals[row] = residual[0];
         for i in 0..3 {
             let mut rvec_plus = rvec.clone_owned();
+            let mut rvec_minus = rvec.clone_owned();
             unsafe {
                 *rvec_plus.get_unchecked_mut(i) += STEP;
+                *rvec_minus.get_unchecked_mut(i) -= STEP;
             }
             let r_plus = rvec_to_r9(&rvec_plus);
             let residual_plus = r_plus.transpose() * om * r_plus;
-            let j = (residual_plus[0] - residual[0]) / STEP;
+            let r_minus = rvec_to_r9(&rvec_minus);
+            let residual_minus = r_minus.transpose() * om * r_minus;
+            let j = (residual_plus[0] - residual_minus[0]) / (2.0 * STEP);
             jac[(row, i)] = j;
         }
     }
@@ -57,9 +61,9 @@ pub fn sqpnp_solve(
     p3ds: &[(f64, f64, f64)],
     p2ds_z: &[(f64, f64)],
 ) -> Option<((f64, f64, f64), (f64, f64, f64))> {
-    const MAX_ITER: usize = 20;
-    const MAX_OMAGA_SQUASH: usize = 6;
-    const MAX_RVEC_STEP: f64 = 0.5;
+    const MAX_ITER: usize = 50;
+    const MAX_OMAGA_SQUASH: usize = 4;
+    const MAX_RVEC_STEP: f64 = 0.3;
     if p3ds.len() < 3 {
         return None;
     }
@@ -111,35 +115,44 @@ pub fn sqpnp_solve(
 
     let mut rvec = na::Vector3::<f64>::new(0.0, 0.0, 1e-4);
     let mut prev_dx_norm_squared = f64::MAX;
+    let mut step_max = MAX_RVEC_STEP;
     for i in 0..MAX_ITER {
         let (residuals, jac) = residual_and_approx_jaccobian(&rvec, &omegas);
         let b = -1.0 * jac.transpose() * residuals;
         let a = jac.transpose() * jac;
 
         let mut dx = a.qr().solve(&b).unwrap();
+        trace!("dx {}", dx);
         dx.iter_mut().for_each(|i| {
-            if i.abs() > MAX_RVEC_STEP {
-                *i /= i.abs() / MAX_RVEC_STEP;
+            if i.abs() > step_max {
+                *i /= i.abs() / step_max;
             }
         });
         let ns = dx.norm_squared();
-        trace!("{} dx {}", i, ns);
-        rvec += dx;
+        trace!("{} ns {}", i, ns);
+        rvec += dx.clone();
         if ns < 1e-10 {
             break;
+        } else if ns < 1e-4 && ns == prev_dx_norm_squared {
+            trace!("not moving");
+            break;
         } else if ns > prev_dx_norm_squared {
-            trace!("dx not decreasing reset.");
-            rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
-            prev_dx_norm_squared = f64::MAX;
+            trace!("dx not decreasing.");
+            if prev_dx_norm_squared < 0.01 {
+                step_max /= 1.5;
+                trace!("lower step {}", step_max);
+                rvec -= dx;
+            } else {
+                trace!("reset");
+                rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
+                prev_dx_norm_squared = f64::MAX;
+            }
         } else if rvec.norm() > f64::consts::PI {
             trace!("rvec norm larger than pi, reset.");
             rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
         } else {
             prev_dx_norm_squared = ns;
         }
-    }
-    if prev_dx_norm_squared > 0.0001 {
-        return None;
     }
     let tvec = pmat * rvec_to_r9(&rvec);
     let transform = na::Isometry3::new(tvec, rvec);
@@ -148,7 +161,7 @@ pub fn sqpnp_solve(
     if p3dz > 0.0 {
         Some(((rvec[0], rvec[1], rvec[2]), (tvec[0], tvec[1], tvec[2])))
     } else {
-        let mut rmat = na::Rotation3::from_scaled_axis(rvec).matrix().clone();
+        let mut rmat = *na::Rotation3::from_scaled_axis(rvec).matrix();
         trace!("rmat before {}", rmat);
         rmat.columns_mut(0, 2).scale_mut(-1.0);
         let rvec = na::Rotation3::from_matrix_unchecked(rmat).scaled_axis();
