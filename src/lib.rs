@@ -62,7 +62,7 @@ pub fn sqpnp_solve(
     p2ds_z: &[(f64, f64)],
 ) -> Option<((f64, f64, f64), (f64, f64, f64))> {
     const MAX_ITER: usize = 50;
-    const MAX_OMAGA_SQUASH: usize = 4;
+    const MAX_OMAGA_SQUASH: usize = 6;
     const MAX_RVEC_STEP: f64 = 0.3;
     if p3ds.len() < 3 {
         return None;
@@ -146,10 +146,13 @@ pub fn sqpnp_solve(
                 trace!("reset");
                 rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
                 prev_dx_norm_squared = f64::MAX;
+                step_max = MAX_RVEC_STEP;
             }
         } else if rvec.norm() > f64::consts::PI {
             trace!("rvec norm larger than pi, reset.");
             rvec = na::Rotation3::from_scaled_axis(na::Vector3::new_random()).scaled_axis();
+            prev_dx_norm_squared = f64::MAX;
+            step_max = MAX_RVEC_STEP;
         } else {
             prev_dx_norm_squared = ns;
         }
