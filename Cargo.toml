@@ -1,6 +1,6 @@
 [package]
 name = "sqpnp_simple"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 authors = ["Powei Lin <poweilin1994@gmail.com>"]
 readme = "README.md"
@@ -13,7 +13,7 @@ categories = ["data-structures", "science", "mathematics", "science::robotics"]
 exclude = ["/.github/*", "*.ipynb", "./scripts/*", "examples/*", "tests/*"]
 
 [dependencies]
-glam = "0.29.2"
+glam = "0.30.0"
 log = "0.4.22"
 nalgebra = { version = "0.33.2", features = ["rand"] }
 
@@ -25,4 +25,4 @@ name = "random_points_plane"
 
 [dev-dependencies]
 env_logger = "0.11.5"
-rand = "0.8.5"
+rand = "0.9.0"
