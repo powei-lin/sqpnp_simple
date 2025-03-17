@@ -1,7 +1,7 @@
 # sqpnp_simple
 [![crate](https://img.shields.io/crates/v/sqpnp_simple.svg)](https://crates.io/crates/sqpnp_simple)
 
-A pure rust implementation of SQPnP. It's a simplified version. Here's the original [c++ implementation](https://github.com/terzakig/sqpnp).
+A pure rust implementation of SQPnP. It's a simplified version. Here's the original [c++ implementation](https://github.com/terzakig/sqpnp). 
 
 ## Usage
 ```rust
