@@ -21,7 +21,7 @@ impl Default for SolverParameters {
             rank_tolerance: 1e-7,
             sqp_squared_tolerance: 1e-10,
             sqp_det_threshold: 1.001,
-            sqp_max_iteration: 15,
+            sqp_max_iteration: 25,
             orthogonality_squared_error_threshold: 1e-8,
             equal_vectors_squared_diff: 1e-10,
             equal_squared_errors_diff: 1e-6,
@@ -51,11 +51,7 @@ struct PnPSolver {
 }
 
 impl PnPSolver {
-    fn new(
-        p3ds: &[(f64, f64, f64)],
-        p2ds: &[(f64, f64)],
-        parameters: SolverParameters,
-    ) -> Self {
+    fn new(p3ds: &[(f64, f64, f64)], p2ds: &[(f64, f64)], parameters: SolverParameters) -> Self {
         let n = p3ds.len();
         if n != p2ds.len() || n < 3 {
             return Self {
@@ -215,17 +211,19 @@ impl PnPSolver {
 
         let q_inv = match q.try_inverse() {
             Some(inv) => inv,
-            None => return Self {
-                parameters,
-                omega: na::SMatrix::zeros(),
-                s: na::SVector::zeros(),
-                u: na::SMatrix::zeros(),
-                p: na::SMatrix::zeros(),
-                point_mean: na::Vector3::zeros(),
-                num_null_vectors: 0,
-                flag_valid: false,
-                solutions: Vec::new(),
-            },
+            None => {
+                return Self {
+                    parameters,
+                    omega: na::SMatrix::zeros(),
+                    s: na::SVector::zeros(),
+                    u: na::SMatrix::zeros(),
+                    p: na::SMatrix::zeros(),
+                    point_mean: na::Vector3::zeros(),
+                    num_null_vectors: 0,
+                    flag_valid: false,
+                    solutions: Vec::new(),
+                }
+            }
         };
 
         let p_mat = -q_inv * qa_sum;
@@ -245,7 +243,7 @@ impl PnPSolver {
         num_null_vectors += 1;
 
         if num_null_vectors > 6 {
-             return Self {
+            return Self {
                 parameters,
                 omega: na::SMatrix::zeros(),
                 s: na::SVector::zeros(),
@@ -317,21 +315,23 @@ impl PnPSolver {
                 self.handle_solution(sol.0, sol.1, sol.2, &mut min_sq_error);
             }
         }
-        
+
         // Check other eigenvectors if needed
         let mut index = 9 - num_eigen_points - 1;
         while index > 0 && min_sq_error > 3.0 * self.s[index] {
-             let e = self.u.column(index).into_owned();
-             let r = self.nearest_rotation_matrix(&e);
-             let sol = self.run_sqp(&r);
-             self.handle_solution(sol.0, sol.1, sol.2, &mut min_sq_error);
+            let e = self.u.column(index).into_owned();
+            let r = self.nearest_rotation_matrix(&e);
+            let sol = self.run_sqp(&r);
+            self.handle_solution(sol.0, sol.1, sol.2, &mut min_sq_error);
 
-             let r = self.nearest_rotation_matrix(&(-e));
-             let sol = self.run_sqp(&r);
-             self.handle_solution(sol.0, sol.1, sol.2, &mut min_sq_error);
-             
-             if index == 0 { break; }
-             index -= 1;
+            let r = self.nearest_rotation_matrix(&(-e));
+            let sol = self.run_sqp(&r);
+            self.handle_solution(sol.0, sol.1, sol.2, &mut min_sq_error);
+
+            if index == 0 {
+                break;
+            }
+            index -= 1;
         }
 
         true
@@ -346,32 +346,28 @@ impl PnPSolver {
     ) {
         // Check cheirality
         if !self.test_positive_depth(&r, &t) {
-             // In C++ they also check majority depths if centroid fails, implementing simplified version here checking centroid
-             // If strict parity with C++ is needed, we need the points stored in PnPSolver
-             // For now, let's assume if centroid fails, we skip.
-             // Actually, let's implement the majority check if we can access points.
-             // We didn't store points in PnPSolver struct in this implementation to avoid cloning.
-             // Let's rely on centroid for now.
-             return;
+            // In C++ they also check majority depths if centroid fails, implementing simplified version here checking centroid
+            // If strict parity with C++ is needed, we need the points stored in PnPSolver
+            // For now, let's assume if centroid fails, we skip.
+            // Actually, let's implement the majority check if we can access points.
+            // We didn't store points in PnPSolver struct in this implementation to avoid cloning.
+            // Let's rely on centroid for now.
+            return;
         }
 
         let sq_error = (self.omega * r).dot(&r);
         let _r_hat_vec = na::Vector3::new(
-             f64::atan2(r[7], r[8]), 
-             f64::asin(-r[6]), 
-             f64::atan2(r[3], r[0])
-        ); // This is Euler angles, wait. 
-        // The C++ code returns rotation matrix elements in r_hat (9x1).
-        // The user API expects rvec (Rodrigues vector) or similar?
-        // The original rust code returned rvec (3-vector).
-        // C++ `r_hat` is 9x1 flattened rotation matrix.
-        // We need to convert 9x1 rotation matrix to 3-vector (Rodrigues).
-        
-        let r_mat = na::Matrix3::new(
-            r[0], r[1], r[2],
-            r[3], r[4], r[5],
-            r[6], r[7], r[8]
-        );
+            f64::atan2(r[7], r[8]),
+            f64::asin(-r[6]),
+            f64::atan2(r[3], r[0]),
+        ); // This is Euler angles, wait.
+           // The C++ code returns rotation matrix elements in r_hat (9x1).
+           // The user API expects rvec (Rodrigues vector) or similar?
+           // The original rust code returned rvec (3-vector).
+           // C++ `r_hat` is 9x1 flattened rotation matrix.
+           // We need to convert 9x1 rotation matrix to 3-vector (Rodrigues).
+
+        let r_mat = na::Matrix3::new(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
         let rvec = na::Rotation3::from_matrix(&r_mat).scaled_axis();
 
         let solution = SQPSolution {
@@ -391,7 +387,9 @@ impl PnPSolver {
             // Look for equal solution
             let mut found = false;
             for s in &mut self.solutions {
-                if (s.r_hat - solution.r_hat).norm_squared() < self.parameters.equal_vectors_squared_diff {
+                if (s.r_hat - solution.r_hat).norm_squared()
+                    < self.parameters.equal_vectors_squared_diff
+                {
                     if s.sq_error > sq_error {
                         *s = solution;
                     }
@@ -413,7 +411,9 @@ impl PnPSolver {
         let mut delta_sq_norm = f64::MAX;
         let mut step = 0;
 
-        while delta_sq_norm > self.parameters.sqp_squared_tolerance && step < self.parameters.sqp_max_iteration {
+        while delta_sq_norm > self.parameters.sqp_squared_tolerance
+            && step < self.parameters.sqp_max_iteration
+        {
             let delta = self.solve_sqp_system(&r);
             r += delta;
             delta_sq_norm = delta.norm_squared();
@@ -425,24 +425,24 @@ impl PnPSolver {
             r = -r;
             det_r = -det_r;
         }
-        
+
         let r_hat = if det_r > self.parameters.sqp_det_threshold {
             self.nearest_rotation_matrix(&r)
         } else {
             r
         };
-        
+
         let t = self.p * r_hat;
         (r_hat, t, step)
     }
 
     fn solve_sqp_system(&self, r: &na::SVector<f64, 9>) -> na::SVector<f64, 9> {
-        let sqnorm_r1 = r[0]*r[0] + r[1]*r[1] + r[2]*r[2];
-        let sqnorm_r2 = r[3]*r[3] + r[4]*r[4] + r[5]*r[5];
-        let sqnorm_r3 = r[6]*r[6] + r[7]*r[7] + r[8]*r[8];
-        let dot_r1r2 = r[0]*r[3] + r[1]*r[4] + r[2]*r[5];
-        let dot_r1r3 = r[0]*r[6] + r[1]*r[7] + r[2]*r[8];
-        let dot_r2r3 = r[3]*r[6] + r[4]*r[7] + r[5]*r[8];
+        let sqnorm_r1 = r[0] * r[0] + r[1] * r[1] + r[2] * r[2];
+        let sqnorm_r2 = r[3] * r[3] + r[4] * r[4] + r[5] * r[5];
+        let sqnorm_r3 = r[6] * r[6] + r[7] * r[7] + r[8] * r[8];
+        let dot_r1r2 = r[0] * r[3] + r[1] * r[4] + r[2] * r[5];
+        let dot_r1r3 = r[0] * r[6] + r[1] * r[7] + r[2] * r[8];
+        let dot_r2r3 = r[3] * r[6] + r[4] * r[7] + r[5] * r[8];
 
         let (h, n, jh) = self.row_and_null_space(r);
 
@@ -460,7 +460,9 @@ impl PnPSolver {
         x[2] = g[2] / jh[(2, 2)];
         x[3] = (g[3] - jh[(3, 0)] * x[0] - jh[(3, 1)] * x[1]) / jh[(3, 3)];
         x[4] = (g[4] - jh[(4, 1)] * x[1] - jh[(4, 2)] * x[2] - jh[(4, 3)] * x[3]) / jh[(4, 4)];
-        x[5] = (g[5] - jh[(5, 0)] * x[0] - jh[(5, 2)] * x[2] - jh[(5, 3)] * x[3] - jh[(5, 4)] * x[4]) / jh[(5, 5)];
+        x[5] =
+            (g[5] - jh[(5, 0)] * x[0] - jh[(5, 2)] * x[2] - jh[(5, 3)] * x[3] - jh[(5, 4)] * x[4])
+                / jh[(5, 5)];
 
         let mut delta = h * x;
 
@@ -469,110 +471,170 @@ impl PnPSolver {
         let rhs = -(nt_omega * (delta + r));
 
         // Solve W * y = rhs. W is 3x3 symmetric.
-        // Using nalgebra's cholesky or lu.
+        // Using nalgebra's cholesky or lu or svd.
         let y = match w.cholesky() {
             Some(cholesky) => cholesky.solve(&rhs),
-            None => w.lu().solve(&rhs).unwrap_or(na::Vector3::zeros()), // Fallback
+            None => {
+                // Fallback to SVD (pseudo-inverse) if Cholesky fails (not PD)
+                // This mimics the C++ implementation's fallback to pseudo-inverse
+                let svd = w.svd(true, true);
+                svd.solve(&rhs, 1e-9).unwrap_or(na::Vector3::zeros())
+            }
         };
 
         delta += n * y;
         delta
     }
 
-    fn row_and_null_space(&self, r: &na::SVector<f64, 9>) -> (na::SMatrix<f64, 9, 6>, na::SMatrix<f64, 9, 3>, na::SMatrix<f64, 6, 6>) {
+    fn row_and_null_space(
+        &self,
+        r: &na::SVector<f64, 9>,
+    ) -> (
+        na::SMatrix<f64, 9, 6>,
+        na::SMatrix<f64, 9, 3>,
+        na::SMatrix<f64, 6, 6>,
+    ) {
         let mut h = na::SMatrix::<f64, 9, 6>::zeros();
         let mut k = na::SMatrix::<f64, 6, 6>::zeros();
 
         // 1. q1
-        let norm_r1 = f64::sqrt(r[0]*r[0] + r[1]*r[1] + r[2]*r[2]);
+        let norm_r1 = f64::sqrt(r[0] * r[0] + r[1] * r[1] + r[2] * r[2]);
         let inv_norm_r1 = if norm_r1 > 1e-5 { 1.0 / norm_r1 } else { 0.0 };
-        h[(0, 0)] = r[0] * inv_norm_r1; h[(1, 0)] = r[1] * inv_norm_r1; h[(2, 0)] = r[2] * inv_norm_r1;
+        h[(0, 0)] = r[0] * inv_norm_r1;
+        h[(1, 0)] = r[1] * inv_norm_r1;
+        h[(2, 0)] = r[2] * inv_norm_r1;
         k[(0, 0)] = 2.0 * norm_r1;
 
         // 2. q2
-        let norm_r2 = f64::sqrt(r[3]*r[3] + r[4]*r[4] + r[5]*r[5]);
+        let norm_r2 = f64::sqrt(r[3] * r[3] + r[4] * r[4] + r[5] * r[5]);
         let inv_norm_r2 = 1.0 / norm_r2;
-        h[(3, 1)] = r[3] * inv_norm_r2; h[(4, 1)] = r[4] * inv_norm_r2; h[(5, 1)] = r[5] * inv_norm_r2;
+        h[(3, 1)] = r[3] * inv_norm_r2;
+        h[(4, 1)] = r[4] * inv_norm_r2;
+        h[(5, 1)] = r[5] * inv_norm_r2;
         k[(1, 1)] = 2.0 * norm_r2;
 
         // 3. q3
-        let norm_r3 = f64::sqrt(r[6]*r[6] + r[7]*r[7] + r[8]*r[8]);
+        let norm_r3 = f64::sqrt(r[6] * r[6] + r[7] * r[7] + r[8] * r[8]);
         let inv_norm_r3 = 1.0 / norm_r3;
-        h[(6, 2)] = r[6] * inv_norm_r3; h[(7, 2)] = r[7] * inv_norm_r3; h[(8, 2)] = r[8] * inv_norm_r3;
+        h[(6, 2)] = r[6] * inv_norm_r3;
+        h[(7, 2)] = r[7] * inv_norm_r3;
+        h[(8, 2)] = r[8] * inv_norm_r3;
         k[(2, 2)] = 2.0 * norm_r3;
 
         // 4. q4
-        let dot_j4q1 = r[3]*h[(0, 0)] + r[4]*h[(1, 0)] + r[5]*h[(2, 0)];
-        let dot_j4q2 = r[0]*h[(3, 1)] + r[1]*h[(4, 1)] + r[2]*h[(5, 1)];
+        let dot_j4q1 = r[3] * h[(0, 0)] + r[4] * h[(1, 0)] + r[5] * h[(2, 0)];
+        let dot_j4q2 = r[0] * h[(3, 1)] + r[1] * h[(4, 1)] + r[2] * h[(5, 1)];
 
-        h[(0, 3)] = r[3] - dot_j4q1*h[(0, 0)]; h[(1, 3)] = r[4] - dot_j4q1*h[(1, 0)]; h[(2, 3)] = r[5] - dot_j4q1*h[(2, 0)];
-        h[(3, 3)] = r[0] - dot_j4q2*h[(3, 1)]; h[(4, 3)] = r[1] - dot_j4q2*h[(4, 1)]; h[(5, 3)] = r[2] - dot_j4q2*h[(5, 1)];
-        
-        let inv_norm_j4 = 1.0 / f64::sqrt(h[(0, 3)]*h[(0, 3)] + h[(1, 3)]*h[(1, 3)] + h[(2, 3)]*h[(2, 3)] + 
-                                          h[(3, 3)]*h[(3, 3)] + h[(4, 3)]*h[(4, 3)] + h[(5, 3)]*h[(5, 3)]);
-        
-        h[(0, 3)] *= inv_norm_j4; h[(1, 3)] *= inv_norm_j4; h[(2, 3)] *= inv_norm_j4;
-        h[(3, 3)] *= inv_norm_j4; h[(4, 3)] *= inv_norm_j4; h[(5, 3)] *= inv_norm_j4;
+        h[(0, 3)] = r[3] - dot_j4q1 * h[(0, 0)];
+        h[(1, 3)] = r[4] - dot_j4q1 * h[(1, 0)];
+        h[(2, 3)] = r[5] - dot_j4q1 * h[(2, 0)];
+        h[(3, 3)] = r[0] - dot_j4q2 * h[(3, 1)];
+        h[(4, 3)] = r[1] - dot_j4q2 * h[(4, 1)];
+        h[(5, 3)] = r[2] - dot_j4q2 * h[(5, 1)];
 
-        k[(3, 0)] = r[3]*h[(0, 0)] + r[4]*h[(1, 0)] + r[5]*h[(2, 0)]; 
-        k[(3, 1)] = r[0]*h[(3, 1)] + r[1]*h[(4, 1)] + r[2]*h[(5, 1)];
-        k[(3, 3)] = r[3]*h[(0, 3)] + r[4]*h[(1, 3)] + r[5]*h[(2, 3)] + r[0]*h[(3, 3)] + r[1]*h[(4, 3)] + r[2]*h[(5, 3)];
+        let inv_norm_j4 = 1.0
+            / f64::sqrt(
+                h[(0, 3)] * h[(0, 3)]
+                    + h[(1, 3)] * h[(1, 3)]
+                    + h[(2, 3)] * h[(2, 3)]
+                    + h[(3, 3)] * h[(3, 3)]
+                    + h[(4, 3)] * h[(4, 3)]
+                    + h[(5, 3)] * h[(5, 3)],
+            );
+
+        h[(0, 3)] *= inv_norm_j4;
+        h[(1, 3)] *= inv_norm_j4;
+        h[(2, 3)] *= inv_norm_j4;
+        h[(3, 3)] *= inv_norm_j4;
+        h[(4, 3)] *= inv_norm_j4;
+        h[(5, 3)] *= inv_norm_j4;
+
+        k[(3, 0)] = r[3] * h[(0, 0)] + r[4] * h[(1, 0)] + r[5] * h[(2, 0)];
+        k[(3, 1)] = r[0] * h[(3, 1)] + r[1] * h[(4, 1)] + r[2] * h[(5, 1)];
+        k[(3, 3)] = r[3] * h[(0, 3)]
+            + r[4] * h[(1, 3)]
+            + r[5] * h[(2, 3)]
+            + r[0] * h[(3, 3)]
+            + r[1] * h[(4, 3)]
+            + r[2] * h[(5, 3)];
 
         // 5. q5
-        let dot_j5q2 = r[6]*h[(3, 1)] + r[7]*h[(4, 1)] + r[8]*h[(5, 1)];
-        let dot_j5q3 = r[3]*h[(6, 2)] + r[4]*h[(7, 2)] + r[5]*h[(8, 2)];
-        let dot_j5q4 = r[6]*h[(3, 3)] + r[7]*h[(4, 3)] + r[8]*h[(5, 3)];
+        let dot_j5q2 = r[6] * h[(3, 1)] + r[7] * h[(4, 1)] + r[8] * h[(5, 1)];
+        let dot_j5q3 = r[3] * h[(6, 2)] + r[4] * h[(7, 2)] + r[5] * h[(8, 2)];
+        let dot_j5q4 = r[6] * h[(3, 3)] + r[7] * h[(4, 3)] + r[8] * h[(5, 3)];
 
-        h[(0, 4)] = -dot_j5q4*h[(0, 3)]; h[(1, 4)] = -dot_j5q4*h[(1, 3)]; h[(2, 4)] = -dot_j5q4*h[(2, 3)];
-        h[(3, 4)] = r[6] - dot_j5q2*h[(3, 1)] - dot_j5q4*h[(3, 3)]; 
-        h[(4, 4)] = r[7] - dot_j5q2*h[(4, 1)] - dot_j5q4*h[(4, 3)]; 
-        h[(5, 4)] = r[8] - dot_j5q2*h[(5, 1)] - dot_j5q4*h[(5, 3)];
-        h[(6, 4)] = r[3] - dot_j5q3*h[(6, 2)]; 
-        h[(7, 4)] = r[4] - dot_j5q3*h[(7, 2)]; 
-        h[(8, 4)] = r[5] - dot_j5q3*h[(8, 2)];
+        h[(0, 4)] = -dot_j5q4 * h[(0, 3)];
+        h[(1, 4)] = -dot_j5q4 * h[(1, 3)];
+        h[(2, 4)] = -dot_j5q4 * h[(2, 3)];
+        h[(3, 4)] = r[6] - dot_j5q2 * h[(3, 1)] - dot_j5q4 * h[(3, 3)];
+        h[(4, 4)] = r[7] - dot_j5q2 * h[(4, 1)] - dot_j5q4 * h[(4, 3)];
+        h[(5, 4)] = r[8] - dot_j5q2 * h[(5, 1)] - dot_j5q4 * h[(5, 3)];
+        h[(6, 4)] = r[3] - dot_j5q3 * h[(6, 2)];
+        h[(7, 4)] = r[4] - dot_j5q3 * h[(7, 2)];
+        h[(8, 4)] = r[5] - dot_j5q3 * h[(8, 2)];
 
         let mut col4 = h.column_mut(4);
         col4.normalize_mut();
-        
-        k[(4, 1)] = r[6]*h[(3, 1)] + r[7]*h[(4, 1)] + r[8]*h[(5, 1)];
-        k[(4, 2)] = r[3]*h[(6, 2)] + r[4]*h[(7, 2)] + r[5]*h[(8, 2)];
-        k[(4, 3)] = r[6]*h[(3, 3)] + r[7]*h[(4, 3)] + r[8]*h[(5, 3)];
-        k[(4, 4)] = r[6]*h[(3, 4)] + r[7]*h[(4, 4)] + r[8]*h[(5, 4)] + r[3]*h[(6, 4)] + r[4]*h[(7, 4)] + r[5]*h[(8, 4)];
+
+        k[(4, 1)] = r[6] * h[(3, 1)] + r[7] * h[(4, 1)] + r[8] * h[(5, 1)];
+        k[(4, 2)] = r[3] * h[(6, 2)] + r[4] * h[(7, 2)] + r[5] * h[(8, 2)];
+        k[(4, 3)] = r[6] * h[(3, 3)] + r[7] * h[(4, 3)] + r[8] * h[(5, 3)];
+        k[(4, 4)] = r[6] * h[(3, 4)]
+            + r[7] * h[(4, 4)]
+            + r[8] * h[(5, 4)]
+            + r[3] * h[(6, 4)]
+            + r[4] * h[(7, 4)]
+            + r[5] * h[(8, 4)];
 
         // 6. q6
-        let dot_j6q1 = r[6]*h[(0, 0)] + r[7]*h[(1, 0)] + r[8]*h[(2, 0)];
-        let dot_j6q3 = r[0]*h[(6, 2)] + r[1]*h[(7, 2)] + r[2]*h[(8, 2)];
-        let dot_j6q4 = r[6]*h[(0, 3)] + r[7]*h[(1, 3)] + r[8]*h[(2, 3)];
-        let dot_j6q5 = r[0]*h[(6, 4)] + r[1]*h[(7, 4)] + r[2]*h[(8, 4)] + r[6]*h[(0, 4)] + r[7]*h[(1, 4)] + r[8]*h[(2, 4)];
+        let dot_j6q1 = r[6] * h[(0, 0)] + r[7] * h[(1, 0)] + r[8] * h[(2, 0)];
+        let dot_j6q3 = r[0] * h[(6, 2)] + r[1] * h[(7, 2)] + r[2] * h[(8, 2)];
+        let dot_j6q4 = r[6] * h[(0, 3)] + r[7] * h[(1, 3)] + r[8] * h[(2, 3)];
+        let dot_j6q5 = r[0] * h[(6, 4)]
+            + r[1] * h[(7, 4)]
+            + r[2] * h[(8, 4)]
+            + r[6] * h[(0, 4)]
+            + r[7] * h[(1, 4)]
+            + r[8] * h[(2, 4)];
 
-        h[(0, 5)] = r[6] - dot_j6q1*h[(0, 0)] - dot_j6q4*h[(0, 3)] - dot_j6q5*h[(0, 4)];
-        h[(1, 5)] = r[7] - dot_j6q1*h[(1, 0)] - dot_j6q4*h[(1, 3)] - dot_j6q5*h[(1, 4)];
-        h[(2, 5)] = r[8] - dot_j6q1*h[(2, 0)] - dot_j6q4*h[(2, 3)] - dot_j6q5*h[(2, 4)];
-        h[(3, 5)] = -dot_j6q5*h[(3, 4)] - dot_j6q4*h[(3, 3)];
-        h[(4, 5)] = -dot_j6q5*h[(4, 4)] - dot_j6q4*h[(4, 3)];
-        h[(5, 5)] = -dot_j6q5*h[(5, 4)] - dot_j6q4*h[(5, 3)];
-        h[(6, 5)] = r[0] - dot_j6q3*h[(6, 2)] - dot_j6q5*h[(6, 4)];
-        h[(7, 5)] = r[1] - dot_j6q3*h[(7, 2)] - dot_j6q5*h[(7, 4)];
-        h[(8, 5)] = r[2] - dot_j6q3*h[(8, 2)] - dot_j6q5*h[(8, 4)];
+        h[(0, 5)] = r[6] - dot_j6q1 * h[(0, 0)] - dot_j6q4 * h[(0, 3)] - dot_j6q5 * h[(0, 4)];
+        h[(1, 5)] = r[7] - dot_j6q1 * h[(1, 0)] - dot_j6q4 * h[(1, 3)] - dot_j6q5 * h[(1, 4)];
+        h[(2, 5)] = r[8] - dot_j6q1 * h[(2, 0)] - dot_j6q4 * h[(2, 3)] - dot_j6q5 * h[(2, 4)];
+        h[(3, 5)] = -dot_j6q5 * h[(3, 4)] - dot_j6q4 * h[(3, 3)];
+        h[(4, 5)] = -dot_j6q5 * h[(4, 4)] - dot_j6q4 * h[(4, 3)];
+        h[(5, 5)] = -dot_j6q5 * h[(5, 4)] - dot_j6q4 * h[(5, 3)];
+        h[(6, 5)] = r[0] - dot_j6q3 * h[(6, 2)] - dot_j6q5 * h[(6, 4)];
+        h[(7, 5)] = r[1] - dot_j6q3 * h[(7, 2)] - dot_j6q5 * h[(7, 4)];
+        h[(8, 5)] = r[2] - dot_j6q3 * h[(8, 2)] - dot_j6q5 * h[(8, 4)];
 
         let mut col5 = h.column_mut(5);
         col5.normalize_mut();
 
-        k[(5, 0)] = r[6]*h[(0, 0)] + r[7]*h[(1, 0)] + r[8]*h[(2, 0)];
-        k[(5, 2)] = r[0]*h[(6, 2)] + r[1]*h[(7, 2)] + r[2]*h[(8, 2)];
-        k[(5, 3)] = r[6]*h[(0, 3)] + r[7]*h[(1, 3)] + r[8]*h[(2, 3)];
-        k[(5, 4)] = r[6]*h[(0, 4)] + r[7]*h[(1, 4)] + r[8]*h[(2, 4)] + r[0]*h[(6, 4)] + r[1]*h[(7, 4)] + r[2]*h[(8, 4)];
-        k[(5, 5)] = r[6]*h[(0, 5)] + r[7]*h[(1, 5)] + r[8]*h[(2, 5)] + r[0]*h[(6, 5)] + r[1]*h[(7, 5)] + r[2]*h[(8, 5)];
+        k[(5, 0)] = r[6] * h[(0, 0)] + r[7] * h[(1, 0)] + r[8] * h[(2, 0)];
+        k[(5, 2)] = r[0] * h[(6, 2)] + r[1] * h[(7, 2)] + r[2] * h[(8, 2)];
+        k[(5, 3)] = r[6] * h[(0, 3)] + r[7] * h[(1, 3)] + r[8] * h[(2, 3)];
+        k[(5, 4)] = r[6] * h[(0, 4)]
+            + r[7] * h[(1, 4)]
+            + r[8] * h[(2, 4)]
+            + r[0] * h[(6, 4)]
+            + r[1] * h[(7, 4)]
+            + r[2] * h[(8, 4)];
+        k[(5, 5)] = r[6] * h[(0, 5)]
+            + r[7] * h[(1, 5)]
+            + r[8] * h[(2, 5)]
+            + r[0] * h[(6, 5)]
+            + r[1] * h[(7, 5)]
+            + r[2] * h[(8, 5)];
 
         // Null space N
         let pn = na::SMatrix::<f64, 9, 9>::identity() - h * h.transpose();
         let mut n = na::SMatrix::<f64, 9, 3>::zeros();
-        
+
         let norm_threshold = 0.1;
         let mut index1 = 0;
         let mut max_norm1 = f64::MIN;
         let mut col_norms = [0.0; 9];
-        
+
         for i in 0..9 {
             col_norms[i] = pn.column(i).norm();
             if col_norms[i] >= norm_threshold && col_norms[i] > max_norm1 {
@@ -580,7 +642,7 @@ impl PnPSolver {
                 index1 = i;
             }
         }
-        
+
         let v1 = pn.column(index1);
         n.set_column(0, &(v1 / max_norm1));
         col_norms[index1] = -1.0;
@@ -627,45 +689,49 @@ impl PnPSolver {
     }
 
     fn nearest_rotation_matrix(&self, e: &na::SVector<f64, 9>) -> na::SVector<f64, 9> {
-        let mat_e = na::Matrix3::new(
-            e[0], e[1], e[2],
-            e[3], e[4], e[5],
-            e[6], e[7], e[8]
-        );
+        let mat_e = na::Matrix3::new(e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8]);
         let svd = mat_e.svd(true, true);
         let u = svd.u.unwrap();
         let v_t = svd.v_t.unwrap();
         let det_uv = u.determinant() * v_t.determinant();
         let diag = na::Vector3::new(1.0, 1.0, det_uv);
         let r = u * na::Matrix3::from_diagonal(&diag) * v_t;
-        
+
         na::SVector::<f64, 9>::from_vec(vec![
-            r[(0, 0)], r[(0, 1)], r[(0, 2)],
-            r[(1, 0)], r[(1, 1)], r[(1, 2)],
-            r[(2, 0)], r[(2, 1)], r[(2, 2)],
+            r[(0, 0)],
+            r[(0, 1)],
+            r[(0, 2)],
+            r[(1, 0)],
+            r[(1, 1)],
+            r[(1, 2)],
+            r[(2, 0)],
+            r[(2, 1)],
+            r[(2, 2)],
         ])
     }
 
     fn orthogonality_error(&self, a: &na::SVector<f64, 9>) -> f64 {
-        let sq_norm_a1 = a[0]*a[0] + a[1]*a[1] + a[2]*a[2];
-        let sq_norm_a2 = a[3]*a[3] + a[4]*a[4] + a[5]*a[5];
-        let sq_norm_a3 = a[6]*a[6] + a[7]*a[7] + a[8]*a[8];
-        let dot_a1a2 = a[0]*a[3] + a[1]*a[4] + a[2]*a[5];
-        let dot_a1a3 = a[0]*a[6] + a[1]*a[7] + a[2]*a[8];
-        let dot_a2a3 = a[3]*a[6] + a[4]*a[7] + a[5]*a[8];
+        let sq_norm_a1 = a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
+        let sq_norm_a2 = a[3] * a[3] + a[4] * a[4] + a[5] * a[5];
+        let sq_norm_a3 = a[6] * a[6] + a[7] * a[7] + a[8] * a[8];
+        let dot_a1a2 = a[0] * a[3] + a[1] * a[4] + a[2] * a[5];
+        let dot_a1a3 = a[0] * a[6] + a[1] * a[7] + a[2] * a[8];
+        let dot_a2a3 = a[3] * a[6] + a[4] * a[7] + a[5] * a[8];
 
-        (sq_norm_a1 - 1.0).powi(2) + (sq_norm_a2 - 1.0).powi(2) + (sq_norm_a3 - 1.0).powi(2) +
-        2.0 * (dot_a1a2.powi(2) + dot_a1a3.powi(2) + dot_a2a3.powi(2))
+        (sq_norm_a1 - 1.0).powi(2)
+            + (sq_norm_a2 - 1.0).powi(2)
+            + (sq_norm_a3 - 1.0).powi(2)
+            + 2.0 * (dot_a1a2.powi(2) + dot_a1a3.powi(2) + dot_a2a3.powi(2))
     }
 
     fn determinant9x1(&self, r: &na::SVector<f64, 9>) -> f64 {
-        (r[0]*r[4]*r[8] + r[1]*r[5]*r[6] + r[2]*r[3]*r[7]) - 
-        (r[6]*r[4]*r[2] + r[7]*r[5]*r[0] + r[8]*r[3]*r[1])
+        (r[0] * r[4] * r[8] + r[1] * r[5] * r[6] + r[2] * r[3] * r[7])
+            - (r[6] * r[4] * r[2] + r[7] * r[5] * r[0] + r[8] * r[3] * r[1])
     }
 
     fn test_positive_depth(&self, r: &na::SVector<f64, 9>, t: &na::Vector3<f64>) -> bool {
         let m = self.point_mean;
-        (r[6]*m[0] + r[7]*m[1] + r[8]*m[2] + t[2]) > 0.0
+        (r[6] * m[0] + r[7] * m[1] + r[8] * m[2] + t[2]) > 0.0
     }
 }
 
@@ -727,7 +793,7 @@ mod tests {
         if let Some((rvec_pnp, tvec_pnp)) = sqpnp_solve(&p3ds, &p2ds) {
             let rvec_pnp = na::Vector3::new(rvec_pnp.0, rvec_pnp.1, rvec_pnp.2);
             let tvec_pnp = na::Vector3::new(tvec_pnp.0, tvec_pnp.1, tvec_pnp.2);
-            
+
             let r_diff = (rvec_pnp - rvec).norm();
             let t_diff = (tvec_pnp - tvec).norm();
 
@@ -738,10 +804,93 @@ mod tests {
             println!("rvec diff {}", r_diff);
             println!("tvec diff {}", t_diff);
 
-            assert!(r_diff < 1e-10, "Rotation vector difference too large: {}", r_diff);
-            assert!(t_diff < 1e-10, "Translation vector difference too large: {}", t_diff);
+            assert!(
+                r_diff < 1e-10,
+                "Rotation vector difference too large: {}",
+                r_diff
+            );
+            assert!(
+                t_diff < 1e-10,
+                "Translation vector difference too large: {}",
+                t_diff
+            );
         } else {
             panic!("Solver failed to find a solution");
+        }
+    }
+
+    #[test]
+    fn test_random_points_plane_solve() {
+        for i in 0..1000 {
+            let p3ds_pt: Vec<_> = (0..144)
+                .map(|_| na::Point3::<f64>::new(random(), random(), 0.5))
+                .collect();
+
+            let rvec = 3.0
+                * na::Vector3::new(
+                    random::<f64>() - 0.5,
+                    random::<f64>() - 0.5,
+                    random::<f64>() - 0.5,
+                );
+            let tvec = na::Vector3::new(random::<f64>(), random::<f64>(), random::<f64>());
+            let transform = na::Isometry3::new(tvec, rvec);
+            let rvec = transform.rotation.scaled_axis();
+            let (p2ds, p3ds): (Vec<(f64, f64)>, Vec<_>) = p3ds_pt
+                .iter()
+                .filter_map(|p| {
+                    let p3dt = transform * p;
+                    if p3dt.z > 0.0 {
+                        Some(((p3dt.x / p3dt.z, p3dt.y / p3dt.z), (p.x, p.y, p.z)))
+                    } else {
+                        None
+                    }
+                })
+                .unzip();
+
+            if p3ds.len() < 3 {
+                continue;
+            }
+
+            if let Some((rvec_pnp, tvec_pnp)) = sqpnp_solve(&p3ds, &p2ds) {
+                let rvec_pnp = na::Vector3::new(rvec_pnp.0, rvec_pnp.1, rvec_pnp.2);
+                let tvec_pnp = na::Vector3::new(tvec_pnp.0, tvec_pnp.1, tvec_pnp.2);
+
+                let r_diff = (rvec_pnp - rvec).norm();
+                let t_diff = (tvec_pnp - tvec).norm();
+
+                let mut max_reproj_err = 0.0;
+                for (p3, p2) in zip(&p3ds, &p2ds) {
+                    let p3d_cam =
+                        na::Isometry3::new(tvec_pnp, rvec_pnp) * na::Point3::new(p3.0, p3.1, p3.2);
+                    if p3d_cam.z.abs() > 1e-6 {
+                        let u = p3d_cam.x / p3d_cam.z;
+                        let v = p3d_cam.y / p3d_cam.z;
+                        let err = (u - p2.0).powi(2) + (v - p2.1).powi(2);
+                        if err > max_reproj_err {
+                            max_reproj_err = err;
+                        }
+                    }
+                }
+
+                if max_reproj_err > 1e-6 {
+                    println!("Iteration {} failed", i);
+                    println!("rvec gt  {}", rvec);
+                    println!("rvec pnp {}", rvec_pnp);
+                    println!("tvec gt  {}", tvec);
+                    println!("tvec pnp {}", tvec_pnp);
+                    println!("rvec diff {}", r_diff);
+                    println!("tvec diff {}", t_diff);
+                    println!("max reproj err {}", max_reproj_err);
+                }
+                assert!(
+                    max_reproj_err < 1e-6,
+                    "Reprojection error too large at iter {}: {}",
+                    i,
+                    max_reproj_err
+                );
+            } else {
+                panic!("Solver failed to find a solution at iter {}", i);
+            }
         }
     }
 }
