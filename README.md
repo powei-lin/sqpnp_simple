@@ -12,6 +12,18 @@ use sqpnp_simple::sqpnp_solve;
 let (rvec, tvec) = sqpnp_solve(&p3ds, &p2ds).unwrap();
 ```
 
+By default, `sqpnp_simple` re-exports `glam` 0.30 and `nalgebra` 0.33 as
+`sqpnp_simple::glam` and `sqpnp_simple::nalgebra`. To choose other versions,
+disable the default features and select exactly one version of each:
+
+```toml
+sqpnp_simple = { version = "0.2", default-features = false, features = ["glam-0-34", "nalgebra-0-35"] }
+```
+
+Supported features are `glam-0-30` through `glam-0-34` and `nalgebra-0-33`
+through `nalgebra-0-35`. Use the re-exported crates for types passed to or
+returned from `sqpnp_simple`.
+
 ## Example
 ```sh
 cargo run -r --example random_points

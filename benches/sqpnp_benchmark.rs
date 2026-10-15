@@ -1,6 +1,6 @@
 use diol::prelude::*;
-use nalgebra as na;
 use rand::random;
+use sqpnp_simple::nalgebra as na;
 use sqpnp_simple::sqpnp_solve;
 
 fn main() -> std::io::Result<()> {
@@ -17,7 +17,6 @@ fn main() -> std::io::Result<()> {
 
     bench.register(
         |b: Bencher, (scenario, n): (String, usize)| {
-            let n = n;
             let (p3ds, p2ds) = if scenario == "random" {
                 let p3ds_pt: Vec<_> = (0..n)
                     .map(|_| na::Point3::<f64>::new(random(), random(), random::<f64>() + 0.5))
