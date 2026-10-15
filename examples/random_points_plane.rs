@@ -1,7 +1,7 @@
 use std::time::Instant;
 
-use nalgebra as na;
 use rand::{self, random};
+use sqpnp_simple::nalgebra as na;
 use sqpnp_simple::sqpnp_solve;
 
 fn main() {

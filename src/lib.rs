@@ -1,5 +1,22 @@
-use core::f64;
 use std::iter::zip;
+
+#[cfg(feature = "glam-0-30")]
+pub use glam_0_30 as glam;
+#[cfg(feature = "glam-0-31")]
+pub use glam_0_31 as glam;
+#[cfg(feature = "glam-0-32")]
+pub use glam_0_32 as glam;
+#[cfg(feature = "glam-0-33")]
+pub use glam_0_33 as glam;
+#[cfg(feature = "glam-0-34")]
+pub use glam_0_34 as glam;
+
+#[cfg(feature = "nalgebra-0-33")]
+pub use nalgebra_0_33 as nalgebra;
+#[cfg(feature = "nalgebra-0-34")]
+pub use nalgebra_0_34 as nalgebra;
+#[cfg(feature = "nalgebra-0-35")]
+pub use nalgebra_0_35 as nalgebra;
 
 use nalgebra as na;
 
@@ -222,7 +239,7 @@ impl PnPSolver {
                     num_null_vectors: 0,
                     flag_valid: false,
                     solutions: Vec::new(),
-                }
+                };
             }
         };
 
@@ -361,11 +378,11 @@ impl PnPSolver {
             f64::asin(-r[6]),
             f64::atan2(r[3], r[0]),
         ); // This is Euler angles, wait.
-           // The C++ code returns rotation matrix elements in r_hat (9x1).
-           // The user API expects rvec (Rodrigues vector) or similar?
-           // The original rust code returned rvec (3-vector).
-           // C++ `r_hat` is 9x1 flattened rotation matrix.
-           // We need to convert 9x1 rotation matrix to 3-vector (Rodrigues).
+        // The C++ code returns rotation matrix elements in r_hat (9x1).
+        // The user API expects rvec (Rodrigues vector) or similar?
+        // The original rust code returned rvec (3-vector).
+        // C++ `r_hat` is 9x1 flattened rotation matrix.
+        // We need to convert 9x1 rotation matrix to 3-vector (Rodrigues).
 
         let r_mat = na::Matrix3::new(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8]);
         let rvec = na::Rotation3::from_matrix(&r_mat).scaled_axis();
@@ -635,10 +652,10 @@ impl PnPSolver {
         let mut max_norm1 = f64::MIN;
         let mut col_norms = [0.0; 9];
 
-        for i in 0..9 {
-            col_norms[i] = pn.column(i).norm();
-            if col_norms[i] >= norm_threshold && col_norms[i] > max_norm1 {
-                max_norm1 = col_norms[i];
+        for (i, col_norm) in col_norms.iter_mut().enumerate() {
+            *col_norm = pn.column(i).norm();
+            if *col_norm >= norm_threshold && *col_norm > max_norm1 {
+                max_norm1 = *col_norm;
                 index1 = i;
             }
         }
@@ -649,9 +666,9 @@ impl PnPSolver {
 
         let mut index2 = 0;
         let mut min_dot12 = f64::MAX;
-        for i in 0..9 {
-            if col_norms[i] >= norm_threshold {
-                let cos_v1_x_col = (pn.column(i).dot(&v1) / col_norms[i]).abs();
+        for (i, &col_norm) in col_norms.iter().enumerate() {
+            if col_norm >= norm_threshold {
+                let cos_v1_x_col = (pn.column(i).dot(&v1) / col_norm).abs();
                 if cos_v1_x_col <= min_dot12 {
                     index2 = i;
                     min_dot12 = cos_v1_x_col;
@@ -667,9 +684,9 @@ impl PnPSolver {
 
         let mut index3 = 0;
         let mut min_dot1323 = f64::MAX;
-        for i in 0..9 {
-            if col_norms[i] >= norm_threshold {
-                let inv_norm = 1.0 / col_norms[i];
+        for (i, &col_norm) in col_norms.iter().enumerate() {
+            if col_norm >= norm_threshold {
+                let inv_norm = 1.0 / col_norm;
                 let cos_v1_x_col = (pn.column(i).dot(&v1) * inv_norm).abs();
                 let cos_v2_x_col = (pn.column(i).dot(&v2) * inv_norm).abs();
                 if cos_v1_x_col + cos_v2_x_col <= min_dot1323 {
@@ -735,26 +752,22 @@ impl PnPSolver {
     }
 }
 
-pub fn sqpnp_solve(
-    p3ds: &[(f64, f64, f64)],
-    p2ds: &[(f64, f64)],
-) -> Option<((f64, f64, f64), (f64, f64, f64))> {
+pub type PoseEstimate = ((f64, f64, f64), (f64, f64, f64));
+
+pub fn sqpnp_solve(p3ds: &[(f64, f64, f64)], p2ds: &[(f64, f64)]) -> Option<PoseEstimate> {
     let mut solver = PnPSolver::new(p3ds, p2ds, SolverParameters::default());
-    if solver.solve() {
-        if let Some(sol) = solver.solutions.first() {
-            return Some((
-                (sol.r_hat[0], sol.r_hat[1], sol.r_hat[2]),
-                (sol.t[0], sol.t[1], sol.t[2]),
-            ));
-        }
+    if solver.solve()
+        && let Some(sol) = solver.solutions.first()
+    {
+        return Some((
+            (sol.r_hat[0], sol.r_hat[1], sol.r_hat[2]),
+            (sol.t[0], sol.t[1], sol.t[2]),
+        ));
     }
     None
 }
 
-pub fn sqpnp_solve_glam(
-    p3ds: &[glam::Vec3],
-    p2ds_z: &[glam::Vec2],
-) -> Option<((f64, f64, f64), (f64, f64, f64))> {
+pub fn sqpnp_solve_glam(p3ds: &[glam::Vec3], p2ds_z: &[glam::Vec2]) -> Option<PoseEstimate> {
     let p3ds: Vec<_> = p3ds
         .iter()
         .map(|p| (p.x as f64, p.y as f64, p.z as f64))

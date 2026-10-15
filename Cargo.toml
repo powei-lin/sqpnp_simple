@@ -1,7 +1,7 @@
 [package]
 name = "sqpnp_simple"
-version = "0.2.0"
-edition = "2021"
+version = "0.3.0"
+edition = "2024"
 authors = ["Powei Lin <poweilin1994@gmail.com>"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
@@ -12,10 +12,27 @@ keywords = ["solvepnp", "vision", "pose"]
 categories = ["data-structures", "science", "mathematics", "science::robotics"]
 exclude = ["/.github/*", "*.ipynb", "./scripts/*", "examples/*", "tests/*"]
 
+[features]
+default = ["glam-0-30", "nalgebra-0-33"]
+glam-0-30 = ["dep:glam_0_30"]
+glam-0-31 = ["dep:glam_0_31"]
+glam-0-32 = ["dep:glam_0_32"]
+glam-0-33 = ["dep:glam_0_33"]
+glam-0-34 = ["dep:glam_0_34"]
+nalgebra-0-33 = ["dep:nalgebra_0_33"]
+nalgebra-0-34 = ["dep:nalgebra_0_34"]
+nalgebra-0-35 = ["dep:nalgebra_0_35"]
+
 [dependencies]
-glam = "0.30.0"
+glam_0_30 = { package = "glam", version = "0.30.0", optional = true }
+glam_0_31 = { package = "glam", version = "0.31", optional = true }
+glam_0_32 = { package = "glam", version = "0.32", optional = true }
+glam_0_33 = { package = "glam", version = "0.33", optional = true }
+glam_0_34 = { package = "glam", version = "0.34", optional = true }
 log = "0.4.22"
-nalgebra = { version = "0.33.2", features = ["rand"] }
+nalgebra_0_33 = { package = "nalgebra", version = "0.33.2", features = ["rand"], optional = true }
+nalgebra_0_34 = { package = "nalgebra", version = "0.34", features = ["rand"], optional = true }
+nalgebra_0_35 = { package = "nalgebra", version = "0.35", features = ["rand"], optional = true }
 
 [[example]]
 name = "random_points"
